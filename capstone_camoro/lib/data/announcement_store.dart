@@ -30,12 +30,17 @@ class AnnouncementStore extends ChangeNotifier {
     return List.unmodifiable(sorted);
   }
 
-  List<Announcement> get publishedAnnouncements =>
-      announcements.where((post) => !post.isScheduled).toList();
+  List<Announcement> get publishedAnnouncements => announcements
+      .where((post) => !post.isScheduled && !post.isArchived)
+      .toList();
   List<Announcement> get scheduledAnnouncements =>
       announcements.where((post) => post.isScheduled).toList()
         ..sort((a, b) => a.scheduledFor!.compareTo(b.scheduledFor!));
-  int get savedCount => _savedIds.length;
+  List<Announcement> get archivedAnnouncements =>
+      announcements.where((post) => post.isArchived).toList()
+        ..sort((a, b) => b.archivedAt!.compareTo(a.archivedAt!));
+  int get savedCount =>
+      publishedAnnouncements.where((post) => isSaved(post.id)).length;
 
   Announcement? find(int id) {
     for (final post in _announcements) {
@@ -48,7 +53,7 @@ class AnnouncementStore extends ChangeNotifier {
 
   void toggleSaved(int id) {
     final post = find(id);
-    if (post == null || post.isScheduled) return;
+    if (post == null || post.isScheduled || post.isArchived) return;
     if (!_savedIds.remove(id)) _savedIds.add(id);
     notifyListeners();
   }
@@ -85,6 +90,7 @@ class AnnouncementStore extends ChangeNotifier {
   }) {
     final index = _announcements.indexWhere((post) => post.id == id);
     if (index == -1) return false;
+    if (_announcements[index].isArchived) return false;
     _validateSchedule(scheduledFor);
     final previous = _announcements[index];
     _announcements[index] = Announcement(
@@ -114,6 +120,32 @@ class AnnouncementStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool archive(int id) => _changeArchiveState(id, archive: true);
+  bool restore(int id) => _changeArchiveState(id, archive: false);
+
+  bool _changeArchiveState(int id, {required bool archive}) {
+    final index = _announcements.indexWhere((post) => post.id == id);
+    if (index == -1) return false;
+    final previous = _announcements[index];
+    if (previous.isArchived == archive) return false;
+    _announcements[index] = Announcement(
+      id: previous.id,
+      title: previous.title,
+      description: previous.description,
+      audience: previous.audience,
+      createdAt: previous.createdAt,
+      updatedAt: previous.updatedAt,
+      publishedAt: archive
+          ? previous.publishedAt ??
+                (previous.isScheduled ? null : previous.createdAt)
+          : previous.publishedAt ?? _now(),
+      archivedAt: archive ? _now() : null,
+    );
+    _scheduleNextPublication();
+    notifyListeners();
+    return true;
+  }
+
   void _validateSchedule(DateTime? scheduledFor) {
     if (scheduledFor != null && !scheduledFor.isAfter(_now())) {
       throw ArgumentError('Choose a future date and time.');
@@ -124,7 +156,9 @@ class AnnouncementStore extends ChangeNotifier {
     final now = _now();
     for (var i = 0; i < _announcements.length; i++) {
       final post = _announcements[i];
-      if (post.scheduledFor == null || post.scheduledFor!.isAfter(now)) {
+      if (post.isArchived ||
+          post.scheduledFor == null ||
+          post.scheduledFor!.isAfter(now)) {
         continue;
       }
       _announcements[i] = Announcement(

@@ -64,18 +64,89 @@ Future<void> chooseTomorrow(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'archive and restore hide and restore posts for students and Saved',
+    (tester) async {
+      await phoneSize(tester);
+      await tester.pumpWidget(const MyApp());
+      await logIn(tester, 'student');
+      await tester.tap(find.byTooltip('Bookmark announcement').first);
+      await tester.pumpAndSettle();
+      await logOut(tester);
+      await logIn(tester, 'admin');
+      expect(find.text('Manage'), findsOneWidget);
+      expect(find.text('Board'), findsNothing);
+      expect(find.text('Create'), findsNothing);
+      expect(
+        tester.getSize(find.byTooltip('Create announcement')),
+        const Size(64, 64),
+      );
+      await tester.tap(find.byTooltip('Announcement actions').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(PopupMenuItem<String>, 'Archive'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(TextButton, 'Archive'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Foundation Day Program and Gate Schedule'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Foundation Day Program and Gate Schedule'),
+        findsOneWidget,
+      );
+      await logOut(tester);
+      await logIn(tester, 'student');
+      expect(
+        find.text('Foundation Day Program and Gate Schedule'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Saved').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing saved yet'), findsOneWidget);
+      await logOut(tester);
+      await logIn(tester, 'admin');
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Announcement actions').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Edit'), findsNothing);
+      await tester.tap(find.text('Restore'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Restore and publish'));
+      await tester.pumpAndSettle();
+      expect(find.text('No archived announcements'), findsOneWidget);
+      await logOut(tester);
+      await logIn(tester, 'student');
+      await tester.tap(find.text('Saved').last);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Foundation Day Program and Gate Schedule'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('scheduled creation is admin-only and can be published early', (
     tester,
   ) async {
     await phoneSize(tester);
     await tester.pumpWidget(const MyApp());
     await logIn(tester, 'admin');
-    expect(find.text('Create'), findsOneWidget);
-    expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
-    expect(find.text('Manage'), findsNothing);
+    expect(find.text('Create'), findsNothing);
+    expect(find.byTooltip('Create announcement'), findsOneWidget);
+    expect(find.text('Manage'), findsOneWidget);
+    expect(find.byIcon(Icons.add), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.text('Create'));
+    await tester.tap(find.byTooltip('Create announcement'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('announcement-title')),
@@ -246,7 +317,7 @@ void main() {
     await phoneSize(tester);
     await tester.pumpWidget(const MyApp());
     await logIn(tester, 'admin');
-    await tester.tap(find.text('Create').last);
+    await tester.tap(find.byTooltip('Create announcement'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Publish announcement'));
     await tester.tap(find.text('Publish announcement'));
@@ -327,12 +398,12 @@ void main() {
   });
 
   testWidgets(
-    'publishing a department post shows it on Board and preserves the student default',
+    'publishing a department post shows it in Manage and preserves the student default',
     (tester) async {
       await phoneSize(tester);
       await tester.pumpWidget(const MyApp());
       await logIn(tester, 'admin');
-      await tester.tap(find.text('Create').last);
+      await tester.tap(find.byTooltip('Create announcement'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('announcement-title')),
@@ -354,7 +425,7 @@ void main() {
       await tester.ensureVisible(find.text('Publish announcement'));
       await tester.tap(find.text('Publish announcement'));
       await tester.pumpAndSettle();
-      expect(find.text('School announcements'), findsOneWidget);
+      expect(find.text('Manage announcements'), findsOneWidget);
       expect(find.text('New CCS update'), findsOneWidget);
       expect(find.text('CCS').first, findsOneWidget);
       await logOut(tester);
@@ -373,7 +444,7 @@ void main() {
     await phoneSize(tester);
     await tester.pumpWidget(const MyApp());
     await logIn(tester, 'admin');
-    await tester.tap(find.text('Create').last);
+    await tester.tap(find.byTooltip('Create announcement'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('announcement-title')),
@@ -391,7 +462,7 @@ void main() {
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
     expect(find.text('Unsaved title'), findsNothing);
-    expect(find.text('School announcements'), findsOneWidget);
+    expect(find.text('Manage announcements'), findsOneWidget);
   });
 
   testWidgets('phone, large text, keyboard and desktop layouts stay usable', (
@@ -404,7 +475,7 @@ void main() {
     await logIn(tester, 'admin');
     expect(tester.takeException(), isNull);
     expect(find.byType(NavigationBar), findsOneWidget);
-    await tester.tap(find.text('Create').last);
+    await tester.tap(find.byTooltip('Create announcement'));
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 250);
     await tester.pumpAndSettle();

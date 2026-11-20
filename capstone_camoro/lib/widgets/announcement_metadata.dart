@@ -22,7 +22,9 @@ class AnnouncementMetadata extends StatelessWidget {
           ).textTheme.labelMedium?.copyWith(color: colors.primary),
         ),
         Text(
-          announcement.isScheduled
+          announcement.isArchived
+              ? 'Archived: ${MaterialLocalizations.of(context).formatMediumDate(announcement.archivedAt!)}'
+              : announcement.isScheduled
               ? 'Scheduled: ${MaterialLocalizations.of(context).formatMediumDate(announcement.displayDate)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(announcement.displayDate), alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context))}'
               : MaterialLocalizations.of(
                   context,

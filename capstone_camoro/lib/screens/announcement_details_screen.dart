@@ -23,7 +23,9 @@ class AnnouncementDetailsScreen extends StatelessWidget {
       listenable: store,
       builder: (context, child) {
         final announcement = store.find(announcementId);
-        if (announcement == null || (!isAdmin && announcement.isScheduled)) {
+        if (announcement == null ||
+            (!isAdmin &&
+                (announcement.isScheduled || announcement.isArchived))) {
           return Scaffold(
             appBar: AppBar(title: const Text('Announcement')),
             body: const Center(
@@ -45,6 +47,13 @@ class AnnouncementDetailsScreen extends StatelessWidget {
                         store,
                         announcement: announcement,
                       );
+                    } else if (action == 'archive' || action == 'restore') {
+                      final changed = await changeAnnouncementArchive(
+                        context,
+                        store,
+                        announcement,
+                      );
+                      if (changed && context.mounted) Navigator.pop(context);
                     } else {
                       final deleted = await deleteAnnouncement(
                         context,
@@ -54,10 +63,7 @@ class AnnouncementDetailsScreen extends StatelessWidget {
                       if (deleted && context.mounted) Navigator.pop(context);
                     }
                   },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
+                  itemBuilder: (context) => announcementMenuItems(announcement),
                 )
               else
                 IconButton(

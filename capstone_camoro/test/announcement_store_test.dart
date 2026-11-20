@@ -4,6 +4,60 @@ import 'package:capstone_camoro/data/announcement_store.dart';
 import 'package:capstone_camoro/models/announcement.dart';
 
 void main() {
+  test(
+    'archiving hides published posts and restores their original date and bookmarks',
+    () {
+      final originalDate = DateTime(2026, 11, 1);
+      final store = AnnouncementStore(
+        initialAnnouncements: [
+          Announcement(
+            id: 1,
+            title: 'Campus update',
+            description: 'Text',
+            audience: AnnouncementAudience.everyone,
+            createdAt: originalDate,
+          ),
+        ],
+      );
+      addTearDown(store.dispose);
+      store.toggleSaved(1);
+      expect(store.archive(1), isTrue);
+      expect(store.publishedAnnouncements, isEmpty);
+      expect(store.archivedAnnouncements.single.isArchived, isTrue);
+      expect(store.savedCount, 0);
+      store.toggleSaved(1);
+      expect(store.restore(1), isTrue);
+      expect(store.archivedAnnouncements, isEmpty);
+      expect(store.publishedAnnouncements.single.publishedAt, originalDate);
+      expect(store.savedCount, 1);
+      expect(store.isSaved(1), isTrue);
+    },
+  );
+
+  testWidgets(
+    'archiving cancels scheduled publication and restore publishes now',
+    (tester) async {
+      var now = DateTime(2026, 11, 21, 9);
+      final store = AnnouncementStore(initialAnnouncements: [], now: () => now);
+      addTearDown(store.dispose);
+      final post = store.create(
+        title: 'Later',
+        description: 'Text',
+        audience: AnnouncementAudience.everyone,
+        scheduledFor: now.add(const Duration(minutes: 1)),
+      );
+      store.archive(post.id);
+      now = now.add(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+      expect(store.publishedAnnouncements, isEmpty);
+      expect(store.scheduledAnnouncements, isEmpty);
+      expect(store.archivedAnnouncements.single.scheduledFor, isNull);
+      store.restore(post.id);
+      expect(store.publishedAnnouncements.single.publishedAt, now);
+      expect(store.archivedAnnouncements, isEmpty);
+    },
+  );
+
   testWidgets(
     'scheduled posts publish at their due time and notify the board',
     (tester) async {

@@ -24,6 +24,7 @@ class Announcement {
     this.updatedAt,
     this.scheduledFor,
     this.publishedAt,
+    this.archivedAt,
   });
 
   final int id;
@@ -34,7 +35,9 @@ class Announcement {
   final DateTime? updatedAt;
   final DateTime? scheduledFor;
   final DateTime? publishedAt;
+  final DateTime? archivedAt;
 
-  bool get isScheduled => scheduledFor != null;
+  bool get isArchived => archivedAt != null;
+  bool get isScheduled => scheduledFor != null && !isArchived;
   DateTime get displayDate => scheduledFor ?? publishedAt ?? createdAt;
 }

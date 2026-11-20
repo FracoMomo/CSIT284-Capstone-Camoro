@@ -30,14 +30,18 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final labels = ['Board', _isAdmin ? 'Create' : 'Saved', 'Account'];
+    final labels = [
+      _isAdmin ? 'Manage' : 'Board',
+      _isAdmin ? '' : 'Saved',
+      'Account',
+    ];
     final icons = [
-      Icons.campaign_outlined,
+      _isAdmin ? Icons.edit_note_outlined : Icons.campaign_outlined,
       _isAdmin ? Icons.add_circle_outline : Icons.bookmark_border,
       Icons.person_outline,
     ];
     final selectedIcons = [
-      Icons.campaign,
+      _isAdmin ? Icons.edit_note : Icons.campaign,
       _isAdmin ? Icons.add_circle : Icons.bookmark,
       Icons.person,
     ];
@@ -47,7 +51,11 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
         return Scaffold(
           appBar: AppBar(
             title: Text(
-              ['School announcements', 'Saved announcements', 'Account'][_tab],
+              [
+                _isAdmin ? 'Manage announcements' : 'School announcements',
+                'Saved announcements',
+                'Account',
+              ][_tab],
             ),
           ),
           body: SafeArea(
@@ -61,9 +69,13 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                     destinations: [
                       for (var i = 0; i < labels.length; i++)
                         NavigationRailDestination(
-                          icon: Icon(icons[i]),
+                          icon: _isAdmin && i == 1
+                              ? _createIcon(context)
+                              : Icon(icons[i]),
                           selectedIcon: Icon(selectedIcons[i]),
-                          label: Text(labels[i]),
+                          label: _isAdmin && i == 1
+                              ? const SizedBox.shrink()
+                              : Text(labels[i]),
                         ),
                     ],
                   ),
@@ -104,15 +116,44 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                   onDestinationSelected: _selectTab,
                   destinations: [
                     for (var i = 0; i < labels.length; i++)
-                      NavigationDestination(
-                        icon: Icon(icons[i]),
-                        selectedIcon: Icon(selectedIcons[i]),
-                        label: labels[i],
-                      ),
+                      if (_isAdmin && i == 1)
+                        Center(
+                          child: SizedBox.square(
+                            dimension: 64,
+                            child: IconButton.filled(
+                              tooltip: 'Create announcement',
+                              iconSize: 36,
+                              onPressed: () => _selectTab(1),
+                              icon: const Icon(Icons.add),
+                            ),
+                          ),
+                        )
+                      else
+                        NavigationDestination(
+                          icon: Icon(icons[i]),
+                          selectedIcon: Icon(selectedIcons[i]),
+                          label: labels[i],
+                        ),
                   ],
                 ),
         );
       },
+    );
+  }
+
+  Widget _createIcon(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Create announcement',
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: colors.primary,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.add, size: 36, color: colors.onPrimary),
+      ),
     );
   }
 
@@ -130,6 +171,8 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
 }
 
 enum _AudienceFilter { all }
+
+enum _ManageView { published, scheduled, archive }
 
 class _AnnouncementFeed extends StatefulWidget {
   const _AnnouncementFeed({
@@ -150,12 +193,12 @@ class _AnnouncementFeed extends StatefulWidget {
 class _AnnouncementFeedState extends State<_AnnouncementFeed> {
   final _scroll = ScrollController();
   late Object _audience;
-  bool _scheduled = false;
+  _ManageView _view = _ManageView.published;
 
   @override
   void initState() {
     super.initState();
-    _audience = widget.savedOnly
+    _audience = widget.savedOnly || widget.isAdmin
         ? _AudienceFilter.all
         : AnnouncementAudience.everyone;
   }
@@ -169,7 +212,9 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
   void showAnnouncement(Announcement announcement) {
     setState(() {
       _audience = announcement.audience;
-      _scheduled = announcement.isScheduled;
+      _view = announcement.isScheduled
+          ? _ManageView.scheduled
+          : _ManageView.published;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
@@ -179,9 +224,15 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
     return ListenableBuilder(
       listenable: widget.store,
       builder: (context, child) {
-        final source = widget.isAdmin && _scheduled
-            ? widget.store.scheduledAnnouncements
-            : widget.store.publishedAnnouncements;
+        final scheduled = widget.isAdmin && _view == _ManageView.scheduled;
+        final archived = widget.isAdmin && _view == _ManageView.archive;
+        final source = !widget.isAdmin
+            ? widget.store.publishedAnnouncements
+            : switch (_view) {
+                _ManageView.published => widget.store.publishedAnnouncements,
+                _ManageView.scheduled => widget.store.scheduledAnnouncements,
+                _ManageView.archive => widget.store.archivedAnnouncements,
+              };
         final posts = source
             .where(
               (post) =>
@@ -211,26 +262,33 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                       Text(
                         widget.savedOnly
                             ? 'Keep useful updates close.'
+                            : widget.isAdmin
+                            ? 'Manage your school’s announcements.'
                             : 'Updates from across your campus.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                       const SizedBox(height: 20),
                       if (widget.isAdmin) ...[
-                        SegmentedButton<bool>(
+                        SegmentedButton<_ManageView>(
+                          showSelectedIcon: false,
                           segments: const [
                             ButtonSegment(
-                              value: false,
+                              value: _ManageView.published,
                               label: Text('Published'),
                             ),
                             ButtonSegment(
-                              value: true,
+                              value: _ManageView.scheduled,
                               label: Text('Scheduled'),
                             ),
+                            ButtonSegment(
+                              value: _ManageView.archive,
+                              label: Text('Archive'),
+                            ),
                           ],
-                          selected: {_scheduled},
+                          selected: {_view},
                           onSelectionChanged: (values) => setState(() {
-                            _scheduled = values.single;
-                            if (_scheduled) _audience = _AudienceFilter.all;
+                            _view = values.single;
+                            _audience = _AudienceFilter.all;
                           }),
                         ),
                         const SizedBox(height: 20),
@@ -259,7 +317,11 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        '${posts.length} ${posts.length == 1 ? 'announcement' : 'announcements'} · ${_scheduled ? 'Next scheduled first' : 'Newest first'}',
+                        '${posts.length} ${posts.length == 1 ? 'announcement' : 'announcements'} · ${scheduled
+                            ? 'Next scheduled first'
+                            : archived
+                            ? 'Recently archived first'
+                            : 'Newest first'}',
                         style: Theme.of(context).textTheme.labelLarge,
                       ),
                       const SizedBox(height: 4),
@@ -277,7 +339,9 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                         Icon(
                           noSavedPosts
                               ? Icons.bookmark_border
-                              : _scheduled
+                              : archived
+                              ? Icons.archive_outlined
+                              : scheduled
                               ? Icons.schedule
                               : Icons.campaign_outlined,
                           size: 40,
@@ -287,7 +351,9 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                         Text(
                           noSavedPosts
                               ? 'Nothing saved yet'
-                              : _scheduled
+                              : archived
+                              ? 'No archived announcements'
+                              : scheduled
                               ? 'No scheduled announcements'
                               : 'No announcements here yet',
                           style: Theme.of(context).textTheme.titleMedium,
@@ -297,8 +363,10 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                         Text(
                           noSavedPosts
                               ? 'Tap the bookmark on an announcement to find it here.'
-                              : _scheduled
-                              ? 'Use Create to schedule a post, or choose another audience.'
+                              : archived
+                              ? 'Archived announcements will appear here.'
+                              : scheduled
+                              ? 'Tap + to schedule a post, or choose another audience.'
                               : 'Try another audience or check back later.',
                           textAlign: TextAlign.center,
                         ),
@@ -376,14 +444,18 @@ class _AnnouncementCard extends StatelessWidget {
                             store,
                             announcement: announcement,
                           );
+                        } else if (value == 'archive' || value == 'restore') {
+                          changeAnnouncementArchive(
+                            context,
+                            store,
+                            announcement,
+                          );
                         } else {
                           deleteAnnouncement(context, store, announcement);
                         }
                       },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Edit')),
-                        PopupMenuItem(value: 'delete', child: Text('Delete')),
-                      ],
+                      itemBuilder: (context) =>
+                          announcementMenuItems(announcement),
                     )
                   else
                     IconButton(

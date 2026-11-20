@@ -4,6 +4,65 @@ import '../data/announcement_store.dart';
 import '../models/announcement.dart';
 import 'announcement_editor_screen.dart';
 
+List<PopupMenuEntry<String>> announcementMenuItems(Announcement announcement) =>
+    [
+      if (announcement.isArchived)
+        const PopupMenuItem(value: 'restore', child: Text('Restore'))
+      else ...[
+        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+        const PopupMenuItem(value: 'archive', child: Text('Archive')),
+      ],
+      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+    ];
+
+Future<bool> changeAnnouncementArchive(
+  BuildContext context,
+  AnnouncementStore store,
+  Announcement announcement,
+) async {
+  final restoring = announcement.isArchived;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(
+        restoring ? 'Restore announcement?' : 'Archive announcement?',
+      ),
+      content: Text(
+        restoring
+            ? '“${announcement.title}” will be published and visible to students now.'
+            : announcement.isScheduled
+            ? '“${announcement.title}” will move to Archive and its scheduled publication will be canceled.'
+            : '“${announcement.title}” will move to Archive and be hidden from students.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(restoring ? 'Restore and publish' : 'Archive'),
+        ),
+      ],
+    ),
+  );
+  if (!context.mounted || confirmed != true) return false;
+  final changed = restoring
+      ? store.restore(announcement.id)
+      : store.archive(announcement.id);
+  if (!changed) return false;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          restoring ? 'Announcement restored.' : 'Announcement archived.',
+        ),
+      ),
+    );
+  return true;
+}
+
 Future<Announcement?> openAnnouncementEditor(
   BuildContext context,
   AnnouncementStore store, {
