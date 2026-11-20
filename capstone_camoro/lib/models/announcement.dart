@@ -22,6 +22,8 @@ class Announcement {
     required this.audience,
     required this.createdAt,
     this.updatedAt,
+    this.scheduledFor,
+    this.publishedAt,
   });
 
   final int id;
@@ -30,4 +32,9 @@ class Announcement {
   final AnnouncementAudience audience;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final DateTime? scheduledFor;
+  final DateTime? publishedAt;
+
+  bool get isScheduled => scheduledFor != null;
+  DateTime get displayDate => scheduledFor ?? publishedAt ?? createdAt;
 }

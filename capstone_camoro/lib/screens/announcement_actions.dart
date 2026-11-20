@@ -4,30 +4,32 @@ import '../data/announcement_store.dart';
 import '../models/announcement.dart';
 import 'announcement_editor_screen.dart';
 
-Future<bool> openAnnouncementEditor(
+Future<Announcement?> openAnnouncementEditor(
   BuildContext context,
   AnnouncementStore store, {
   Announcement? announcement,
 }) async {
-  final saved = await Navigator.of(context).push<bool>(
+  final saved = await Navigator.of(context).push<Announcement>(
     MaterialPageRoute(
       builder: (context) =>
           AnnouncementEditorScreen(store: store, announcement: announcement),
     ),
   );
-  if (!context.mounted || saved != true) return false;
+  if (!context.mounted || saved == null) return null;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
         content: Text(
-          announcement == null
+          saved.isScheduled
+              ? 'Announcement scheduled.'
+              : announcement == null || announcement.isScheduled
               ? 'Announcement published.'
               : 'Announcement updated.',
         ),
       ),
     );
-  return true;
+  return saved;
 }
 
 Future<bool> deleteAnnouncement(

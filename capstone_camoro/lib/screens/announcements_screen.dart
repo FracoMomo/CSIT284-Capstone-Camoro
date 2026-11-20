@@ -24,21 +24,21 @@ class AnnouncementsScreen extends StatefulWidget {
 }
 
 class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
+  final _boardKey = GlobalKey<_AnnouncementFeedState>();
   int _tab = 0;
-  int _manageRevision = 0;
   bool get _isAdmin => widget.role == UserRole.admin;
 
   @override
   Widget build(BuildContext context) {
-    final labels = ['Board', _isAdmin ? 'Manage' : 'Saved', 'Account'];
+    final labels = ['Board', _isAdmin ? 'Create' : 'Saved', 'Account'];
     final icons = [
       Icons.campaign_outlined,
-      _isAdmin ? Icons.edit_note_outlined : Icons.bookmark_border,
+      _isAdmin ? Icons.add_circle_outline : Icons.bookmark_border,
       Icons.person_outline,
     ];
     final selectedIcons = [
       Icons.campaign,
-      _isAdmin ? Icons.edit_note : Icons.bookmark,
+      _isAdmin ? Icons.add_circle : Icons.bookmark,
       Icons.person,
     ];
     return LayoutBuilder(
@@ -47,11 +47,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
         return Scaffold(
           appBar: AppBar(
             title: Text(
-              [
-                'School announcements',
-                _isAdmin ? 'Manage announcements' : 'Saved announcements',
-                'Account',
-              ][_tab],
+              ['School announcements', 'Saved announcements', 'Account'][_tab],
             ),
           ),
           body: SafeArea(
@@ -78,17 +74,19 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                     index: _tab,
                     children: [
                       _AnnouncementFeed(
-                        key: const ValueKey('board'),
+                        key: _boardKey,
                         store: widget.store,
                         isAdmin: _isAdmin,
                       ),
-                      _AnnouncementFeed(
-                        key: ValueKey('saved-or-manage-$_manageRevision'),
-                        store: widget.store,
-                        isAdmin: _isAdmin,
-                        savedOnly: !_isAdmin,
-                        managing: _isAdmin,
-                      ),
+                      if (_isAdmin)
+                        const SizedBox.shrink()
+                      else
+                        _AnnouncementFeed(
+                          key: const ValueKey('saved'),
+                          store: widget.store,
+                          isAdmin: false,
+                          savedOnly: true,
+                        ),
                       _AccountScreen(
                         role: widget.role,
                         onLogout: widget.onLogout,
@@ -113,30 +111,20 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                       ),
                   ],
                 ),
-          floatingActionButton: _isAdmin && _tab != 2
-              ? FloatingActionButton.extended(
-                  onPressed: () async {
-                    final published = await openAnnouncementEditor(
-                      context,
-                      widget.store,
-                    );
-                    if (!mounted || !published) return;
-                    setState(() {
-                      _tab = 1;
-                      _manageRevision++;
-                    });
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('New announcement'),
-                )
-              : null,
         );
       },
     );
   }
 
-  void _selectTab(int index) {
+  Future<void> _selectTab(int index) async {
     FocusScope.of(context).unfocus();
+    if (_isAdmin && index == 1) {
+      final saved = await openAnnouncementEditor(context, widget.store);
+      if (!mounted || saved == null) return;
+      setState(() => _tab = 0);
+      _boardKey.currentState?.showAnnouncement(saved);
+      return;
+    }
     setState(() => _tab = index);
   }
 }
@@ -149,39 +137,41 @@ class _AnnouncementFeed extends StatefulWidget {
     required this.store,
     required this.isAdmin,
     this.savedOnly = false,
-    this.managing = false,
   });
 
   final AnnouncementStore store;
   final bool isAdmin;
   final bool savedOnly;
-  final bool managing;
 
   @override
   State<_AnnouncementFeed> createState() => _AnnouncementFeedState();
 }
 
 class _AnnouncementFeedState extends State<_AnnouncementFeed> {
-  final _search = TextEditingController();
+  final _scroll = ScrollController();
   late Object _audience;
+  bool _scheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _audience = widget.savedOnly || widget.managing
+    _audience = widget.savedOnly
         ? _AudienceFilter.all
         : AnnouncementAudience.everyone;
   }
 
   @override
   void dispose() {
-    _search.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  void _resetFilters() {
-    _search.clear();
-    setState(() => _audience = _AudienceFilter.all);
+  void showAnnouncement(Announcement announcement) {
+    setState(() {
+      _audience = announcement.audience;
+      _scheduled = announcement.isScheduled;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   @override
@@ -189,35 +179,28 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
     return ListenableBuilder(
       listenable: widget.store,
       builder: (context, child) {
-        final query = _search.text.trim().toLowerCase();
-        final posts = widget.store.announcements.where((post) {
-          return (!widget.savedOnly || widget.store.isSaved(post.id)) &&
-              (_audience == _AudienceFilter.all ||
-                  post.audience == _audience) &&
-              (query.isEmpty ||
-                  post.title.toLowerCase().contains(query) ||
-                  post.description.toLowerCase().contains(query));
-        }).toList();
+        final source = widget.isAdmin && _scheduled
+            ? widget.store.scheduledAnnouncements
+            : widget.store.publishedAnnouncements;
+        final posts = source
+            .where(
+              (post) =>
+                  (!widget.savedOnly || widget.store.isSaved(post.id)) &&
+                  (_audience == _AudienceFilter.all ||
+                      post.audience == _audience),
+            )
+            .toList();
         final noSavedPosts = widget.savedOnly && widget.store.savedCount == 0;
         return Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView.separated(
+              controller: _scroll,
               key: PageStorageKey(
-                widget.savedOnly
-                    ? 'saved-feed'
-                    : widget.managing
-                    ? 'manage-feed'
-                    : 'board-feed',
+                widget.savedOnly ? 'saved-feed' : 'board-feed',
               ),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                widget.isAdmin ? 112 : 24,
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: posts.isEmpty ? 2 : posts.length + 1,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -228,36 +211,32 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                       Text(
                         widget.savedOnly
                             ? 'Keep useful updates close.'
-                            : widget.managing
-                            ? 'Create and update your school’s announcements.'
                             : 'Updates from across your campus.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                       const SizedBox(height: 20),
-                      TextField(
-                        controller: _search,
-                        decoration: InputDecoration(
-                          hintText: 'Search announcements',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _search.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Clear search',
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () {
-                                    _search.clear();
-                                    setState(() {});
-                                  },
-                                ),
+                      if (widget.isAdmin) ...[
+                        SegmentedButton<bool>(
+                          segments: const [
+                            ButtonSegment(
+                              value: false,
+                              label: Text('Published'),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('Scheduled'),
+                            ),
+                          ],
+                          selected: {_scheduled},
+                          onSelectionChanged: (values) => setState(() {
+                            _scheduled = values.single;
+                            if (_scheduled) _audience = _AudienceFilter.all;
+                          }),
                         ),
-                        textInputAction: TextInputAction.search,
-                        onChanged: (_) => setState(() {}),
-                        onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                      ),
-                      const SizedBox(height: 16),
+                        const SizedBox(height: 20),
+                      ],
                       DropdownButtonFormField<Object>(
                         initialValue: _audience,
-                        // A reset must also reset the form field's internal value.
                         key: ValueKey(_audience),
                         isExpanded: true,
                         decoration: const InputDecoration(
@@ -280,7 +259,7 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        '${posts.length} ${posts.length == 1 ? 'announcement' : 'announcements'} · Newest first',
+                        '${posts.length} ${posts.length == 1 ? 'announcement' : 'announcements'} · ${_scheduled ? 'Next scheduled first' : 'Newest first'}',
                         style: Theme.of(context).textTheme.labelLarge,
                       ),
                       const SizedBox(height: 4),
@@ -298,7 +277,9 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                         Icon(
                           noSavedPosts
                               ? Icons.bookmark_border
-                              : Icons.search_off,
+                              : _scheduled
+                              ? Icons.schedule
+                              : Icons.campaign_outlined,
                           size: 40,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -306,21 +287,28 @@ class _AnnouncementFeedState extends State<_AnnouncementFeed> {
                         Text(
                           noSavedPosts
                               ? 'Nothing saved yet'
-                              : 'No announcements found',
+                              : _scheduled
+                              ? 'No scheduled announcements'
+                              : 'No announcements here yet',
                           style: Theme.of(context).textTheme.titleMedium,
+                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
                           noSavedPosts
                               ? 'Tap the bookmark on an announcement to find it here.'
-                              : 'Try a different search or audience.',
+                              : _scheduled
+                              ? 'Use Create to schedule a post, or choose another audience.'
+                              : 'Try another audience or check back later.',
                           textAlign: TextAlign.center,
                         ),
-                        if (!noSavedPosts) ...[
+                        if (!noSavedPosts &&
+                            _audience != _AudienceFilter.all) ...[
                           const SizedBox(height: 12),
                           TextButton(
-                            onPressed: _resetFilters,
-                            child: const Text('Clear filters'),
+                            onPressed: () =>
+                                setState(() => _audience = _AudienceFilter.all),
+                            child: const Text('Show all audiences'),
                           ),
                         ],
                       ],

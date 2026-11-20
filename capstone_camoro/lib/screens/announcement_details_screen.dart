@@ -23,7 +23,7 @@ class AnnouncementDetailsScreen extends StatelessWidget {
       listenable: store,
       builder: (context, child) {
         final announcement = store.find(announcementId);
-        if (announcement == null) {
+        if (announcement == null || (!isAdmin && announcement.isScheduled)) {
           return Scaffold(
             appBar: AppBar(title: const Text('Announcement')),
             body: const Center(

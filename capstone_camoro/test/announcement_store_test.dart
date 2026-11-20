@@ -4,6 +4,99 @@ import 'package:capstone_camoro/data/announcement_store.dart';
 import 'package:capstone_camoro/models/announcement.dart';
 
 void main() {
+  testWidgets(
+    'scheduled posts publish at their due time and notify the board',
+    (tester) async {
+      var now = DateTime(2026, 11, 21, 9);
+      final store = AnnouncementStore(initialAnnouncements: [], now: () => now);
+      addTearDown(store.dispose);
+      var notifications = 0;
+      store.addListener(() => notifications++);
+      final due = now.add(const Duration(minutes: 5));
+      final post = store.create(
+        title: 'Later',
+        description: 'Scheduled text',
+        audience: AnnouncementAudience.ccs,
+        scheduledFor: due,
+      );
+      expect(store.publishedAnnouncements, isEmpty);
+      expect(store.scheduledAnnouncements.single.id, post.id);
+      store.toggleSaved(post.id);
+      expect(store.savedCount, 0);
+      now = now.add(const Duration(minutes: 4));
+      await tester.pump(const Duration(minutes: 4));
+      expect(store.publishedAnnouncements, isEmpty);
+      now = due;
+      await tester.pump(const Duration(minutes: 1));
+      expect(store.scheduledAnnouncements, isEmpty);
+      expect(store.publishedAnnouncements.single.publishedAt, due);
+      expect(
+        store.publishedAnnouncements.single.createdAt,
+        DateTime(2026, 11, 21, 9),
+      );
+      expect(notifications, 2);
+    },
+  );
+
+  testWidgets(
+    'rescheduling, publishing now and deleting cancel pending publication',
+    (tester) async {
+      var now = DateTime(2026, 11, 21, 9);
+      final store = AnnouncementStore(initialAnnouncements: [], now: () => now);
+      addTearDown(store.dispose);
+      final post = store.create(
+        title: 'Later',
+        description: 'Text',
+        audience: AnnouncementAudience.everyone,
+        scheduledFor: now.add(const Duration(minutes: 5)),
+      );
+      store.update(
+        id: post.id,
+        title: 'Rescheduled',
+        description: 'Text',
+        audience: post.audience,
+        scheduledFor: now.add(const Duration(minutes: 10)),
+      );
+      now = now.add(const Duration(minutes: 5));
+      await tester.pump(const Duration(minutes: 5));
+      expect(store.publishedAnnouncements, isEmpty);
+      store.update(
+        id: post.id,
+        title: 'Publish now',
+        description: 'Text',
+        audience: post.audience,
+      );
+      expect(store.publishedAnnouncements.single.publishedAt, now);
+      final second = store.create(
+        title: 'Delete me',
+        description: 'Text',
+        audience: post.audience,
+        scheduledFor: now.add(const Duration(minutes: 1)),
+      );
+      store.delete(second.id);
+      now = now.add(const Duration(hours: 1));
+      await tester.pump(const Duration(hours: 1));
+      expect(store.announcements.length, 1);
+      expect(store.scheduledAnnouncements, isEmpty);
+    },
+  );
+
+  test('past schedules are rejected', () {
+    final now = DateTime(2026, 11, 21, 9);
+    final store = AnnouncementStore(initialAnnouncements: [], now: () => now);
+    addTearDown(store.dispose);
+    expect(
+      () => store.create(
+        title: 'Past',
+        description: 'Text',
+        audience: AnnouncementAudience.everyone,
+        scheduledFor: now,
+      ),
+      throwsArgumentError,
+    );
+    expect(store.announcements, isEmpty);
+  });
+
   test('edits preserve identity, creation date, order, and bookmarks', () {
     final store = AnnouncementStore(
       initialAnnouncements: [
