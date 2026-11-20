@@ -1,29 +1,9 @@
-enum AnnouncementAudience {
-  everyone('For everyone', 'For everyone'),
-  cea('CEA', 'College of Engineering and Architecture'),
-  cmba('CMBA', 'College of Management, Business & Accountancy'),
-  caseCollege('CASE', 'College of Arts, Sciences, & Education'),
-  cnahs('CNAHS', 'College of Nursing & Allied Health Sciences'),
-  ccs('CCS', 'College of Computer Studies'),
-  ccj('CCJ', 'College of Criminal Justice'),
-  basicEducation('Basic Education', 'Basic Education (SHS and under)');
+import '../models/announcement.dart';
 
-  const AnnouncementAudience(this.label, this.fullName);
-
-  final String label;
-  final String fullName;
-}
-
-typedef Announcement = ({
-  int id,
-  String title,
-  String description,
-  AnnouncementAudience audience,
-});
-
-const dummyAnnouncements = <Announcement>[
-  (
+final dummyAnnouncements = <Announcement>[
+  Announcement(
     id: 1,
+    createdAt: DateTime(2026, 11, 10, 9),
     title: 'Finals Week Library Hours',
     description:
         'Need a quiet place to finish your reviewer? The main library will '
@@ -32,8 +12,9 @@ const dummyAnnouncements = <Announcement>[
         'desk before 5:00 PM.',
     audience: AnnouncementAudience.everyone,
   ),
-  (
+  Announcement(
     id: 2,
+    createdAt: DateTime(2026, 11, 11, 9),
     title: 'Club Fair in the Main Courtyard',
     description:
         'Drop by the main courtyard on November 25 from 11:00 AM to 3:00 PM '
@@ -42,8 +23,9 @@ const dummyAnnouncements = <Announcement>[
         'students are welcome to sign up.',
     audience: AnnouncementAudience.everyone,
   ),
-  (
+  Announcement(
     id: 3,
+    createdAt: DateTime(2026, 11, 12, 9),
     title: 'CMBA Scholarship Applications Are Open',
     description:
         'Applications for the second-semester CMBA student assistance grant '
@@ -52,8 +34,9 @@ const dummyAnnouncements = <Announcement>[
         'registration form.',
     audience: AnnouncementAudience.cmba,
   ),
-  (
+  Announcement(
     id: 4,
+    createdAt: DateTime(2026, 11, 13, 9),
     title: 'Computer Lab 2 Closed for Maintenance',
     description:
         'Computer Lab 2 will be closed on November 28 from 8:00 AM to noon '
@@ -62,8 +45,9 @@ const dummyAnnouncements = <Announcement>[
         'sign in with the lab assistant.',
     audience: AnnouncementAudience.ccs,
   ),
-  (
+  Announcement(
     id: 5,
+    createdAt: DateTime(2026, 11, 14, 9),
     title: 'CCJ Volunteers Needed for Campus Clean-Up',
     description:
         'Join the CCJ Student Council on November 28 for a clean-up around '
@@ -72,8 +56,9 @@ const dummyAnnouncements = <Announcement>[
         'Bring a refillable water bottle.',
     audience: AnnouncementAudience.ccj,
   ),
-  (
+  Announcement(
     id: 6,
+    createdAt: DateTime(2026, 11, 15, 9),
     title: 'Basic Education Student ID Replacement',
     description:
         'Students with lost or damaged IDs can request a replacement at the '
@@ -82,8 +67,9 @@ const dummyAnnouncements = <Announcement>[
         'ID. Class advisers can help students who need a registration copy.',
     audience: AnnouncementAudience.basicEducation,
   ),
-  (
+  Announcement(
     id: 7,
+    createdAt: DateTime(2026, 11, 16, 9),
     title: 'CASE Workshop on Finding and Citing Sources',
     description:
         'Working on a research paper? Bring a draft or a list of sources to '
@@ -92,8 +78,9 @@ const dummyAnnouncements = <Announcement>[
         'up your reference list. Sign up at the library desk by November 24.',
     audience: AnnouncementAudience.caseCollege,
   ),
-  (
+  Announcement(
     id: 8,
+    createdAt: DateTime(2026, 11, 17, 9),
     title: 'CNAHS Intramurals Team Registration',
     description:
         'Team captains can submit rosters for volleyball, basketball, and '
@@ -102,8 +89,9 @@ const dummyAnnouncements = <Announcement>[
         'can sign up individually at the CNAHS Student Council desk.',
     audience: AnnouncementAudience.cnahs,
   ),
-  (
+  Announcement(
     id: 9,
+    createdAt: DateTime(2026, 11, 18, 9),
     title: 'Unclaimed Drafting Kits at the CEA Office',
     description:
         'Two drafting kits, a drawing tube, and a calculator were turned in '
@@ -112,8 +100,9 @@ const dummyAnnouncements = <Announcement>[
         'be ready to describe the item you’re claiming.',
     audience: AnnouncementAudience.cea,
   ),
-  (
+  Announcement(
     id: 10,
+    createdAt: DateTime(2026, 11, 19, 9),
     title: 'Tell Us What to Improve Next Semester',
     description:
         'The end-of-term student survey is open in the student portal until '
@@ -122,8 +111,9 @@ const dummyAnnouncements = <Announcement>[
         'under Student Services on the portal homepage.',
     audience: AnnouncementAudience.everyone,
   ),
-  (
+  Announcement(
     id: 11,
+    createdAt: DateTime(2026, 11, 20, 9),
     title: 'Foundation Day Program and Gate Schedule',
     description:
         'Foundation Day is on December 4! Gates open at 7:00 AM, and the '

@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter (Linux)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "deviceId": "linux",
+      "env": {
+        "GDK_BACKEND": "x11"
+      }
+    },
+    {
+      "name": "Flutter (Selected device)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "env": {
+        "GDK_BACKEND": "x11"
+      }
+    }
+  ]
+}

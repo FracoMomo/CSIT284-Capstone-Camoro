@@ -1,132 +1,342 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../data/dummy_announcements.dart';
-
-enum _BoardFilter { all, bookmarked }
+import '../data/announcement_store.dart';
+import '../models/announcement.dart';
+import '../models/user_role.dart';
+import '../widgets/announcement_metadata.dart';
+import 'announcement_actions.dart';
+import 'announcement_details_screen.dart';
 
 class AnnouncementsScreen extends StatefulWidget {
-  const AnnouncementsScreen({super.key});
+  const AnnouncementsScreen({
+    super.key,
+    required this.store,
+    required this.role,
+    required this.onLogout,
+  });
+
+  final AnnouncementStore store;
+  final UserRole role;
+  final VoidCallback onLogout;
 
   @override
   State<AnnouncementsScreen> createState() => _AnnouncementsScreenState();
 }
 
 class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
-  final _bookmarkedIds = ValueNotifier<Set<int>>({});
-  Object _filter = _BoardFilter.all;
+  int _tab = 0;
+  int _manageRevision = 0;
+  bool get _isAdmin => widget.role == UserRole.admin;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = ['Board', _isAdmin ? 'Manage' : 'Saved', 'Account'];
+    final icons = [
+      Icons.campaign_outlined,
+      _isAdmin ? Icons.edit_note_outlined : Icons.bookmark_border,
+      Icons.person_outline,
+    ];
+    final selectedIcons = [
+      Icons.campaign,
+      _isAdmin ? Icons.edit_note : Icons.bookmark,
+      Icons.person,
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 840;
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              [
+                'School announcements',
+                _isAdmin ? 'Manage announcements' : 'Saved announcements',
+                'Account',
+              ][_tab],
+            ),
+          ),
+          body: SafeArea(
+            child: Row(
+              children: [
+                if (wide) ...[
+                  NavigationRail(
+                    selectedIndex: _tab,
+                    labelType: NavigationRailLabelType.all,
+                    onDestinationSelected: _selectTab,
+                    destinations: [
+                      for (var i = 0; i < labels.length; i++)
+                        NavigationRailDestination(
+                          icon: Icon(icons[i]),
+                          selectedIcon: Icon(selectedIcons[i]),
+                          label: Text(labels[i]),
+                        ),
+                    ],
+                  ),
+                  const VerticalDivider(width: 1),
+                ],
+                Expanded(
+                  child: IndexedStack(
+                    index: _tab,
+                    children: [
+                      _AnnouncementFeed(
+                        key: const ValueKey('board'),
+                        store: widget.store,
+                        isAdmin: _isAdmin,
+                      ),
+                      _AnnouncementFeed(
+                        key: ValueKey('saved-or-manage-$_manageRevision'),
+                        store: widget.store,
+                        isAdmin: _isAdmin,
+                        savedOnly: !_isAdmin,
+                        managing: _isAdmin,
+                      ),
+                      _AccountScreen(
+                        role: widget.role,
+                        onLogout: widget.onLogout,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          bottomNavigationBar: wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: _selectTab,
+                  destinations: [
+                    for (var i = 0; i < labels.length; i++)
+                      NavigationDestination(
+                        icon: Icon(icons[i]),
+                        selectedIcon: Icon(selectedIcons[i]),
+                        label: labels[i],
+                      ),
+                  ],
+                ),
+          floatingActionButton: _isAdmin && _tab != 2
+              ? FloatingActionButton.extended(
+                  onPressed: () async {
+                    final published = await openAnnouncementEditor(
+                      context,
+                      widget.store,
+                    );
+                    if (!mounted || !published) return;
+                    setState(() {
+                      _tab = 1;
+                      _manageRevision++;
+                    });
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('New announcement'),
+                )
+              : null,
+        );
+      },
+    );
+  }
+
+  void _selectTab(int index) {
+    FocusScope.of(context).unfocus();
+    setState(() => _tab = index);
+  }
+}
+
+enum _AudienceFilter { all }
+
+class _AnnouncementFeed extends StatefulWidget {
+  const _AnnouncementFeed({
+    super.key,
+    required this.store,
+    required this.isAdmin,
+    this.savedOnly = false,
+    this.managing = false,
+  });
+
+  final AnnouncementStore store;
+  final bool isAdmin;
+  final bool savedOnly;
+  final bool managing;
+
+  @override
+  State<_AnnouncementFeed> createState() => _AnnouncementFeedState();
+}
+
+class _AnnouncementFeedState extends State<_AnnouncementFeed> {
+  final _search = TextEditingController();
+  late Object _audience;
+
+  @override
+  void initState() {
+    super.initState();
+    _audience = widget.savedOnly || widget.managing
+        ? _AudienceFilter.all
+        : AnnouncementAudience.everyone;
+  }
 
   @override
   void dispose() {
-    _bookmarkedIds.dispose();
+    _search.dispose();
     super.dispose();
   }
 
-  void _toggleBookmark(int id) {
-    final updatedIds = {..._bookmarkedIds.value};
-    if (!updatedIds.remove(id)) updatedIds.add(id);
-    _bookmarkedIds.value = updatedIds;
-  }
-
-  void _openAnnouncement(Announcement announcement) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => _AnnouncementDetails(
-          announcement: announcement,
-          bookmarkedIds: _bookmarkedIds,
-          onToggleBookmark: () => _toggleBookmark(announcement.id),
-        ),
-      ),
-    );
+  void _resetFilters() {
+    _search.clear();
+    setState(() => _audience = _AudienceFilter.all);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Announcements')),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Filter announcements',
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<Object>(
-                    value: _filter,
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem(
-                        value: _BoardFilter.all,
-                        child: Text('All announcements'),
+    return ListenableBuilder(
+      listenable: widget.store,
+      builder: (context, child) {
+        final query = _search.text.trim().toLowerCase();
+        final posts = widget.store.announcements.where((post) {
+          return (!widget.savedOnly || widget.store.isSaved(post.id)) &&
+              (_audience == _AudienceFilter.all ||
+                  post.audience == _audience) &&
+              (query.isEmpty ||
+                  post.title.toLowerCase().contains(query) ||
+                  post.description.toLowerCase().contains(query));
+        }).toList();
+        final noSavedPosts = widget.savedOnly && widget.store.savedCount == 0;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView.separated(
+              key: PageStorageKey(
+                widget.savedOnly
+                    ? 'saved-feed'
+                    : widget.managing
+                    ? 'manage-feed'
+                    : 'board-feed',
+              ),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                widget.isAdmin ? 112 : 24,
+              ),
+              itemCount: posts.isEmpty ? 2 : posts.length + 1,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        widget.savedOnly
+                            ? 'Keep useful updates close.'
+                            : widget.managing
+                            ? 'Create and update your school’s announcements.'
+                            : 'Updates from across your campus.',
+                        style: Theme.of(context).textTheme.bodyLarge,
                       ),
-                      for (final audience in AnnouncementAudience.values)
-                        DropdownMenuItem(
-                          value: audience,
-                          child: Text(audience.label),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _search,
+                        decoration: InputDecoration(
+                          hintText: 'Search announcements',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _search.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Clear search',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () {
+                                    _search.clear();
+                                    setState(() {});
+                                  },
+                                ),
                         ),
-                      const DropdownMenuItem(
-                        value: _BoardFilter.bookmarked,
-                        child: Text('Bookmarked'),
+                        textInputAction: TextInputAction.search,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => FocusScope.of(context).unfocus(),
                       ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<Object>(
+                        initialValue: _audience,
+                        // A reset must also reset the form field's internal value.
+                        key: ValueKey(_audience),
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Audience',
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: _AudienceFilter.all,
+                            child: Text('All announcements'),
+                          ),
+                          for (final audience in AnnouncementAudience.values)
+                            DropdownMenuItem(
+                              value: audience,
+                              child: Text(audience.label),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) setState(() => _audience = value);
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        '${posts.length} ${posts.length == 1 ? 'announcement' : 'announcements'} · Newest first',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 4),
                     ],
-                    onChanged: (filter) {
-                      if (filter != null) setState(() => _filter = filter);
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: ValueListenableBuilder<Set<int>>(
-                valueListenable: _bookmarkedIds,
-                builder: (context, bookmarkedIds, child) {
-                  final announcements = switch (_filter) {
-                    _BoardFilter.bookmarked =>
-                      dummyAnnouncements
-                          .where((post) => bookmarkedIds.contains(post.id))
-                          .toList(),
-                    AnnouncementAudience audience =>
-                      dummyAnnouncements
-                          .where((post) => post.audience == audience)
-                          .toList(),
-                    _ => dummyAnnouncements,
-                  };
-
-                  if (announcements.isEmpty) {
-                    return Center(
-                      child: Text(
-                        _filter == _BoardFilter.bookmarked
-                            ? 'No bookmarked announcements yet.'
-                            : 'No announcements in this category.',
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    key: ValueKey(_filter),
-                    padding: const EdgeInsets.all(12),
-                    itemCount: announcements.length,
-                    itemBuilder: (context, index) {
-                      final announcement = announcements[index];
-                      return _AnnouncementCard(
-                        announcement: announcement,
-                        isBookmarked: bookmarkedIds.contains(announcement.id),
-                        onOpen: () => _openAnnouncement(announcement),
-                        onToggleBookmark: () =>
-                            _toggleBookmark(announcement.id),
-                      );
-                    },
                   );
-                },
-              ),
+                }
+                if (posts.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 40,
+                      horizontal: 16,
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          noSavedPosts
+                              ? Icons.bookmark_border
+                              : Icons.search_off,
+                          size: 40,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          noSavedPosts
+                              ? 'Nothing saved yet'
+                              : 'No announcements found',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          noSavedPosts
+                              ? 'Tap the bookmark on an announcement to find it here.'
+                              : 'Try a different search or audience.',
+                          textAlign: TextAlign.center,
+                        ),
+                        if (!noSavedPosts) ...[
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _resetFilters,
+                            child: const Text('Clear filters'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }
+                return _AnnouncementCard(
+                  announcement: posts[index - 1],
+                  store: widget.store,
+                  isAdmin: widget.isAdmin,
+                );
+              },
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -134,23 +344,30 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
 class _AnnouncementCard extends StatelessWidget {
   const _AnnouncementCard({
     required this.announcement,
-    required this.isBookmarked,
-    required this.onOpen,
-    required this.onToggleBookmark,
+    required this.store,
+    required this.isAdmin,
   });
 
   final Announcement announcement;
-  final bool isBookmarked;
-  final VoidCallback onOpen;
-  final VoidCallback onToggleBookmark;
+  final AnnouncementStore store;
+  final bool isAdmin;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Card(
+    final theme = Theme.of(context);
+    return Card.outlined(
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onOpen,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => AnnouncementDetailsScreen(
+              store: store,
+              announcementId: announcement.id,
+              isAdmin: isAdmin,
+            ),
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
           child: Column(
@@ -159,25 +376,82 @@ class _AnnouncementCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      announcement.title,
-                      style: textTheme.titleMedium,
+                    child: AnnouncementMetadata(announcement: announcement),
+                  ),
+                  if (isAdmin)
+                    PopupMenuButton<String>(
+                      tooltip: 'Announcement actions',
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          openAnnouncementEditor(
+                            context,
+                            store,
+                            announcement: announcement,
+                          );
+                        } else {
+                          deleteAnnouncement(context, store, announcement);
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      ],
+                    )
+                  else
+                    IconButton(
+                      tooltip: store.isSaved(announcement.id)
+                          ? 'Remove bookmark'
+                          : 'Bookmark announcement',
+                      isSelected: store.isSaved(announcement.id),
+                      icon: const Icon(Icons.bookmark_border),
+                      selectedIcon: const Icon(Icons.bookmark),
+                      onPressed: () {
+                        final wasSaved = store.isSaved(announcement.id);
+                        store.toggleSaved(announcement.id);
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                wasSaved
+                                    ? 'Removed from saved announcements.'
+                                    : 'Announcement saved.',
+                              ),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () =>
+                                    store.toggleSaved(announcement.id),
+                              ),
+                            ),
+                          );
+                      },
                     ),
-                  ),
-                  _BookmarkButton(
-                    isBookmarked: isBookmarked,
-                    onPressed: onToggleBookmark,
-                  ),
                 ],
               ),
-              Text(announcement.audience.label, style: textTheme.labelMedium),
-              const SizedBox(height: 4),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: Text(
-                  announcement.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      announcement.title,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      announcement.description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Read announcement',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -188,66 +462,70 @@ class _AnnouncementCard extends StatelessWidget {
   }
 }
 
-class _AnnouncementDetails extends StatelessWidget {
-  const _AnnouncementDetails({
-    required this.announcement,
-    required this.bookmarkedIds,
-    required this.onToggleBookmark,
-  });
+class _AccountScreen extends StatelessWidget {
+  const _AccountScreen({required this.role, required this.onLogout});
 
-  final Announcement announcement;
-  final ValueListenable<Set<int>> bookmarkedIds;
-  final VoidCallback onToggleBookmark;
+  final UserRole role;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Announcement'),
-        actions: [
-          ValueListenableBuilder<Set<int>>(
-            valueListenable: bookmarkedIds,
-            builder: (context, ids, child) => _BookmarkButton(
-              isBookmarked: ids.contains(announcement.id),
-              onPressed: onToggleBookmark,
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: CircleAvatar(
+                radius: 32,
+                child: Icon(Icons.person_outline, size: 32),
+              ),
             ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(announcement.title, style: textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(announcement.audience.fullName, style: textTheme.labelLarge),
-              const SizedBox(height: 16),
-              Text(announcement.description, style: textTheme.bodyLarge),
-            ],
-          ),
+            const SizedBox(height: 20),
+            Text('${role.label} account', style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(
+              role == UserRole.admin
+                  ? 'Manage text announcements for your school and its departments.'
+                  : 'Browse campus updates and save announcements to read again.',
+              style: theme.textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 28),
+            const Divider(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.badge_outlined),
+              title: const Text('Role'),
+              subtitle: Text(role.label),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.info_outline),
+              title: Text('Demo mode'),
+              subtitle: Text(
+                'Changes and bookmarks stay while the app is open. Restarting the app resets the sample data.',
+              ),
+            ),
+            const Divider(),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  onLogout();
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Log out'),
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _BookmarkButton extends StatelessWidget {
-  const _BookmarkButton({required this.isBookmarked, required this.onPressed});
-
-  final bool isBookmarked;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      isSelected: isBookmarked,
-      icon: const Icon(Icons.bookmark_border),
-      selectedIcon: const Icon(Icons.bookmark),
-      tooltip: isBookmarked ? 'Remove bookmark' : 'Bookmark announcement',
-      onPressed: onPressed,
     );
   }
 }
